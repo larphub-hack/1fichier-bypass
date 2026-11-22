@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>1fichier direct</title>
+<style>
+:root{--bg:#0a0c0f;--card:#11151a;--line:#1f262e;--txt:#d7dee6;--dim:#7d8b99;--acc:#4da3ff;--ok:#39d98a;--bad:#ff5d5d;--warn:#e8b24a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace}
+main{max-width:760px;margin:0 auto;padding:28px 18px 60px}
+header{display:flex;align-items:center;gap:10px;margin-bottom:22px}
+h1{font-size:15px;font-weight:600;margin:0;letter-spacing:.4px}
+.dot{width:8px;height:8px;border-radius:50%;background:#4a5462;margin-left:auto}
+.dot.on{background:var(--ok)}
+.dot.off{background:var(--bad)}
+#dotLabel{color:var(--dim);font-size:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:14px}
+label{display:block;font-size:11px;color:var(--dim);margin:0 0 5px;text-transform:uppercase;letter-spacing:.6px}
+input,textarea{width:100%;background:#0b0e12;border:1px solid var(--line);color:var(--txt);border-radius:7px;padding:10px 12px;font:inherit;outline:none;resize:vertical}
+input:focus,textarea:focus{border-color:var(--acc)}
+.row{display:flex;gap:10px;margin-top:12px;align-items:flex-end}
+.grow{flex:1}
+button{cursor:pointer;border:0;border-radius:7px;font:inherit;font-weight:600}
+#go{width:100%;margin-top:14px;padding:11px;background:var(--acc);color:#04121f}
+#go:disabled{opacity:.5;cursor:wait}
+.ghost{background:#1b232c;color:var(--txt);padding:10px 14px;border:1px solid var(--line)}
+.ghost:disabled{opacity:.5;cursor:wait}
+.big{display:block;width:100%;margin-top:12px;padding:14px;font-size:15px;background:var(--ok);color:#042415}
+.meta{margin-bottom:10px;color:var(--dim);font-size:13px}
+#direct{color:#9fd0ff}
+#crackState{color:var(--warn);font-size:12px;margin-left:auto;padding-bottom:10px}
+details{margin-top:10px;border-top:1px solid var(--line);padding-top:10px}
+summary{cursor:pointer;color:var(--dim);font-size:12px}
+details .row{margin-top:10px}
+details label{margin-top:10px}
+input[type=checkbox]{width:auto}
+.log{background:#0b0e12;border:1px solid var(--line);border-radius:10px;padding:12px;font-size:12px;color:var(--dim);min-height:56px;max-height:220px;overflow:auto;white-space:pre-wrap;margin:0}
+.log .err{color:var(--bad)}
+.log .hit{color:var(--ok)}
+.foot{color:#5a6672;font-size:11px;margin-top:16px;text-align:center}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>1fichier &rarr; direct</h1>
+    <span id="dot" class="dot"></span><span id="dotLabel">bridge</span>
+  </header>
+
+  <section class="card">
+    <label>Download page</label>
+    <input id="url" placeholder="https://1fichier.com/?30383b8yheckqbp2wl7w" spellcheck="false" autocomplete="off">
+    <div class="row">
+      <div class="grow">
+        <label>File password</label>
+        <input id="pw" value="SuperPSX" spellcheck="false" autocomplete="off">
+      </div>
+      <div class="grow">
+        <label>Bridge</label>
+        <input id="bridge" value="http://127.0.0.1:8737" spellcheck="false" autocomplete="off">
+      </div>
+    </div>
+    <div class="row">
+      <button class="ghost" id="crack">Crack password</button>
+      <span id="crackState"></span>
+    </div>
+    <details>
+      <summary>crack options</summary>
+      <label>Extra candidates, one per line</label>
+      <textarea id="words" rows="3" spellcheck="false" placeholder="superpsx&#10;psxrips"></textarea>
+      <div class="row">
+        <div class="grow">
+          <label>Delay between attempts (s)</label>
+          <input id="delay" value="0.35">
+        </div>
+        <div>
+          <label>0000&ndash;9999 sweep</label>
+          <input id="digits" type="checkbox">
+        </div>
+      </div>
+    </details>
+    <button id="go">Resolve</button>
+  </section>
+
+  <section class="card" id="result" hidden>
+    <div class="meta" id="name">file</div>
+    <div class="row" style="margin-top:0">
+      <input id="direct" readonly>
+      <button class="ghost" id="copy">Copy</button>
+    </div>
+    <button id="dl" class="big">Download</button>
+  </section>
+
+  <pre id="log" class="log"></pre>
+  <div class="foot">bridge.py runs on this machine; 1fichier tokens are bound to the requesting IP.</div>
+</main>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const bridge = () => ($("#bridge").value.trim() || "http://127.0.0.1:8737").replace(/\/+$/, "");
+
+$("#bridge").value = localStorage.getItem("f1bridge") || "http://127.0.0.1:8737";
+$("#bridge").addEventListener("change", () => localStorage.setItem("f1bridge", $("#bridge").value));
+
+function line(text, cls = "") {
+  const el = document.createElement("div");
+  if (cls) el.className = cls;
+  el.textContent = new Date().toLocaleTimeString() + "  " + text;
+  $("#log").appendChild(el);
+  $("#log").scrollTop = $("#log").scrollHeight;
+}
+
+async function ping() {
+  let ok = false;
+  try {
+    const res = await fetch(bridge() + "/health", { cache: "no-store" });
+    ok = res.ok;
+  } catch {}
+  $("#dot").className = "dot " + (ok ? "on" : "off");
+}
+ping();
+setInterval(ping, 8000);
+
+function validLink(url) {
+  return /^https:\/\/(www\.)?1fichier\.com\/\?[A-Za-z0-9]+/.test(url);
+}
+
+async function resolve() {
+  const url = $("#url").value.trim();
+  if (!validLink(url)) {
+    $("#log").innerHTML = "";
+    line("paste a https://1fichier.com/?<id> page link", "err");
+    return;
+  }
+  $("#go").disabled = true;
+  $("#result").hidden = true;
+  $("#log").innerHTML = "";
+  const started = Date.now();
+  line("POST " + bridge() + "/api/resolve");
+  try {
+    const res = await fetch(bridge() + "/api/resolve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url, password: $("#pw").value })
+    });
+    const data = await res.json();
+    (data.log || []).forEach((entry) => line(entry));
+    if (!data.ok) throw new Error(data.error || "resolve failed");
+    $("#result").hidden = false;
+    $("#name").textContent = data.name || "file (name arrives with the download)";
+    $("#direct").value = data.direct;
+    $("#dl").onclick = () => {
+      location.href = bridge() + "/file?token=" + encodeURIComponent(data.token);
+    };
+    line("ready in " + ((Date.now() - started) / 1000).toFixed(1) + " s");
+  } catch (err) {
+    line(err.message === "Failed to fetch" ? "bridge not reachable - run bridge.py" : err.message, "err");
+  } finally {
+    $("#go").disabled = false;
+  }
+}
+
+let job = null;
+let poll = null;
+
+async function crack() {
+  if (job) {
+    try {
+      await fetch(bridge() + "/api/crack/stop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: job.id })
+      });
+      line("stop requested");
+    } catch {}
+    return;
+  }
+  const url = $("#url").value.trim();
+  if (!validLink(url)) {
+    line("paste a https://1fichier.com/?<id> page link", "err");
+    return;
+  }
+  $("#log").innerHTML = "";
+  line("building candidate list");
+  try {
+    const res = await fetch(bridge() + "/api/crack", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        url,
+        seed: $("#pw").value,
+        extra: $("#words").value,
+        digits: $("#digits").checked,
+        delay: parseFloat($("#delay").value) || 0.35
+      })
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || "crack failed to start");
+    job = { id: data.id };
+    $("#crack").textContent = "Stop";
+    $("#crackState").textContent = "0/" + data.total;
+    line("cracking - " + data.total + " candidates");
+    poll = setInterval(tick, 1000);
+  } catch (err) {
+    line(err.message === "Failed to fetch" ? "bridge not reachable - run bridge.py" : err.message, "err");
+  }
+}
+
+async function tick() {
+  if (!job) return;
+  try {
+    const res = await fetch(bridge() + "/api/crack?id=" + encodeURIComponent(job.id), { cache: "no-store" });
+    const s = await res.json();
+    $("#crackState").textContent =
+      s.tried + "/" + s.total + "  " + s.rate + "/s  " + (s.last || "");
+    if (s.state === "running") return;
+    clearInterval(poll);
+    poll = null;
+    job = null;
+    $("#crack").textContent = "Crack password";
+    if (s.state === "error") {
+      line(s.error || "crack error", "err");
+      return;
+    }
+    if (s.state === "stopped") {
+      line("stopped at " + s.tried + "/" + s.total);
+      return;
+    }
+    if (s.password) {
+      $("#pw").value = s.password;
+      line("password found after " + s.tried + " tries: " + s.password, "hit");
+      resolve();
+    } else {
+      line("no password match in " + s.total + " candidates", "err");
+    }
+  } catch (err) {
+    clearInterval(poll);
+    poll = null;
+    job = null;
+    $("#crack").textContent = "Crack password";
+    line("bridge lost mid-crack", "err");
+  }
+}
+
+async function copy() {
+  try {
+    await navigator.clipboard.writeText($("#direct").value);
+    line("copied");
+  } catch {
+    $("#direct").select();
+    document.execCommand("copy");
+  }
+}
+
+$("#go").addEventListener("click", resolve);
+$("#crack").addEventListener("click", crack);
+$("#url").addEventListener("keydown", (e) => { if (e.key === "Enter") resolve(); });
+$("#copy").addEventListener("click", copy);
+</script>
+</body>
+</html>
